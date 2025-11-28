@@ -150,12 +150,12 @@ def save_credits(credits_data):
 
 def get_user_credits(user_id):
     credits_data = load_credits()
-    return credits_data.get(str(user_id), 12)
+    return credits_data.get(str(user_id), 8)
 
 def add_credits(user_id, amount):
     credits_data = load_credits()
     user_id = str(user_id)
-    current = credits_data.get(user_id, 12)
+    current = credits_data.get(user_id, 8)
     credits_data[user_id] = current + amount
     save_credits(credits_data)
     return credits_data[user_id]
@@ -163,7 +163,7 @@ def add_credits(user_id, amount):
 def deduct_credits(user_id, amount):
     credits_data = load_credits()
     user_id = str(user_id)
-    current = credits_data.get(user_id, 12)
+    current = credits_data.get(user_id, 8)
     if current >= amount:
         credits_data[user_id] = current - amount
         save_credits(credits_data)
@@ -222,7 +222,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🔓 UNRESTRICTED AI WITH CREATIVE FREEDOM
 
-💰 Your credits: {credits} (12 FREE credits!)
+💰 Your credits: {credits} (8 FREE credits!)
 
 🚀 **Multi-API System**: {len(GEMINI_API_KEYS)} keys active
 
