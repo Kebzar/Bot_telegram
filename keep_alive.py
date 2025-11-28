@@ -24,7 +24,7 @@ def status():
 
 def external_ping():
     """Ping all'URL di sviluppo"""
-    dev_url = "https://bot-telegram-1h9p.onrender.com"
+    dev_url = "5f36462e-3d51-4ab7-b268-4338a477948a-00-rtqbzhxfi9dv.janeway.replit.dev"
     
     # Prova diversi endpoint
     endpoints = ['/ping', '/health', '/status', '/']
