@@ -8,6 +8,26 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import google.generativeai as genai
 
+# 🔥 SERVER WEB PER EVITARE 502/503
+from flask import Flask
+from threading import Thread
+
+# Crea un server web Flask separato
+web_app = Flask(__name__)
+
+@web_app.route('/')
+def home():
+    return "🤖 AI Uncensored Ultra - Bot is RUNNING 🟢", 200
+
+@web_app.route('/ping')
+def ping():
+    return "pong", 200
+
+def run_web_server():
+    """Avvia il server web in un thread separato"""
+    port = int(os.environ.get('PORT', 10000))
+    web_app.run(host='0.0.0.0', port=port, debug=False)
+
 # 🔥 KEEP-ALIVE GRATUITO PER REPLIT
 try:
     from keep_alive import keep_alive  # ✅ SOLO keep_alive
@@ -402,8 +422,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 safety_settings=SAFETY_SETTINGS
             )
 
-            response = model.generate_content(
-                f"{system_prompt}\n\nUser: {user_text}"
+            # 🔥 TIMEOUT DI 10 SECONDI
+            response = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None, 
+                    lambda: model.generate_content(f"{system_prompt}\n\nUser: {user_text}")
+                ),
+                timeout=10.0  # 10 secondi timeout
             )
 
             ai_response = response.text
@@ -411,13 +436,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             full_response = f"{ai_response}\n\n💳 Cost: {cost} credits | Balance: {remaining} credits"
 
             await generating_msg.delete()
-
             await send_long_message(update, full_response)
 
+        except asyncio.TimeoutError:
+            await generating_msg.delete()
+            await update.message.reply_text("⏰ Request timeout. The AI is taking too long to respond. Please try again.")
+            # NON RIMBORSIAMO I CREDITI
         except Exception as api_error:
-            # 🔴 Segna la chiave come fallita e ritenta
             mark_key_failed(api_key)
-            raise api_error
+            await generating_msg.delete()
+            await update.message.reply_text("🔴 Service temporarily unavailable. Please try again in a few minutes.")
+            # NON RIMBORSIAMO I CREDITI
 
     except Exception as e:
         error_str = str(e).lower()
@@ -831,6 +860,11 @@ if __name__ == '__main__':
         print("💡 Configura almeno GEMINI_API_KEY_1 nelle Environment Variables")
         exit(1)
 
+    # 🚀 AVVIA IL SERVER WEB IN UN THREAD SEPARATO
+    web_thread = Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+    print(f"✅ Server web avviato sulla porta {os.environ.get('PORT', 10000)}")
+
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -867,9 +901,6 @@ if __name__ == '__main__':
     print("🚀 Multi-API Key Rotation: ACTIVE")
     print("🔓 UNCENSORED PROMPT: ACTIVATED FOR ALL KEYS")
     print("🌐 Keep-alive: ACTIVE - Bot will stay online 24/7")
+    print("🔄 Web Server: ACTIVE - No more 502/503 errors!")
 
     app.run_polling()
-
-@app.route("/ping")
-def ping():
-    return "ZeroFilterBot alive 🟢", 200
