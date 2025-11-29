@@ -422,13 +422,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 safety_settings=SAFETY_SETTINGS
             )
 
-            # 🔥 TIMEOUT DI 10 SECONDI
-            response = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(
-                    None, 
-                    lambda: model.generate_content(f"{system_prompt}\n\nUser: {user_text}")
-                ),
-                timeout=10.0  # 10 secondi timeout
+            # 🔥 RIMOSSO IL TIMEOUT - Richiesta diretta senza limiti di tempo
+            response = model.generate_content(
+                f"{system_prompt}\n\nUser: {user_text}"
             )
 
             ai_response = response.text
@@ -438,10 +434,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await generating_msg.delete()
             await send_long_message(update, full_response)
 
-        except asyncio.TimeoutError:
-            await generating_msg.delete()
-            await update.message.reply_text("⏰ Request timeout. The AI is taking too long to respond. Please try again.")
-            # NON RIMBORSIAMO I CREDITI
         except Exception as api_error:
             mark_key_failed(api_key)
             await generating_msg.delete()
