@@ -1,4 +1,3 @@
- 
 import os
 import json
 import requests
@@ -11,8 +10,9 @@ import google.generativeai as genai
 
 # 🔥 SERVER WEB PER EVITARE 502/503
 from flask import Flask
+from threading import Thread
 
-# Crea un server web Flask
+# Crea un server web Flask separato
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -23,9 +23,18 @@ def home():
 def ping():
     return "pong", 200
 
-@web_app.route('/health')
-def health():
-    return "OK", 200
+def run_web_server():
+    """Avvia il server web in un thread separato"""
+    port = int(os.environ.get('PORT', 10000))
+    web_app.run(host='0.0.0.0', port=port, debug=False)
+
+# 🔥 KEEP-ALIVE GRATUITO PER REPLIT
+try:
+    from keep_alive import keep_alive  # ✅ SOLO keep_alive
+    keep_alive()
+    print("✅ Keep-alive system gratuito attivato")
+except ImportError as e:
+    print(f"⚠️  Keep-alive non disponibile: {e}")
 
 # 🔐 LEGGI DA VARIABILI AMBIENTE - SICURO!
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -41,6 +50,7 @@ GEMINI_API_KEYS = [
     os.environ.get('GEMINI_API_KEY_4'),
     os.environ.get('GEMINI_API_KEY_5'),
     os.environ.get('GEMINI_API_KEY_6'),
+    # Aggiungi altre chiavi se necessario...
 ]
 
 # 🔥 FILTRA CHIAVI VALIDE (rimuovi None)
@@ -402,7 +412,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             genai.configure(api_key=api_key)
 
             model = genai.GenerativeModel(
-                'gemini-2.0-flash-exp',
+                'gemini-2.5-flash',
                 generation_config=genai.types.GenerationConfig(
                     temperature=ai_params['temperature'],
                     top_p=ai_params['top_p'],
@@ -412,7 +422,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 safety_settings=SAFETY_SETTINGS
             )
 
-            response = model.generate_content(f"{system_prompt}\n\nUser: {user_text}")
+            # 🔥 RIMOSSO IL TIMEOUT - Richiesta diretta senza limiti di tempo
+            response = model.generate_content(
+                f"{system_prompt}\n\nUser: {user_text}"
+            )
 
             ai_response = response.text
 
@@ -425,6 +438,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mark_key_failed(api_key)
             await generating_msg.delete()
             await update.message.reply_text("🔴 Service temporarily unavailable. Please try again in a few minutes.")
+            # NON RIMBORSIAMO I CREDITI
 
     except Exception as e:
         error_str = str(e).lower()
@@ -819,55 +833,18 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🔑 API Keys: {scalability['active_keys']}/{len(GEMINI_API_KEYS)} active
 🚀 Max Users Supported: {scalability['max_users']}
 💳 Payment Methods: PayPal, Bitcoin, Ethereum
-🤖 AI Model: Gemini 2.0 Flash Exp
+🤖 AI Model: Gemini 2.5 Flash
 🎛️ Parameters: Temperature 0.9 (Optimized)
 📝 Max Tokens: 4096 (Long Responses)
 🔓 Mode: Uncensored Ultra
 """
     await update.message.reply_text(stats_text)
 
-def run_bot():
-    """Avvia il bot Telegram"""
-    try:
-        app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
-        # Aggiungi tutti gli handler
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CommandHandler("help", help_command))
-        app.add_handler(CommandHandler("link", link))
-        app.add_handler(CommandHandler("credits", credits_command))
-        app.add_handler(CommandHandler("myid", myid))
-        app.add_handler(CommandHandler("buy", buy_command))
-        app.add_handler(CommandHandler("paypal", paypal_command))
-        app.add_handler(CommandHandler("btc", btc_command))
-        app.add_handler(CommandHandler("eth", eth_command))
-        app.add_handler(CommandHandler("status", status_command))
-        app.add_handler(CommandHandler("generate_image", generate_image))
-        app.add_handler(CommandHandler("english", set_english))
-        app.add_handler(CommandHandler("italian", set_italian))
-        app.add_handler(CommandHandler("uncensored", uncensored_mode))
-        app.add_handler(CommandHandler("creative", creative_mode))
-        app.add_handler(CommandHandler("technical", technical_mode))
-        app.add_handler(CommandHandler("addcredits", add_credits_admin))
-        app.add_handler(CommandHandler("stats", stats_command))
-        app.add_handler(CallbackQueryHandler(button_handler))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-        print("🤖 AI Uncensored Ultra with Multi-API System Started!")
-        print(f"🔑 Loaded {len(GEMINI_API_KEYS)} API Keys from Environment Variables")
-        print("🔄 Web Server: ACTIVE - No more 502/503 errors!")
-
-        # Avvia il bot in modo non bloccante
-        app.run_polling(drop_pending_updates=True)
-        
-    except Exception as e:
-        print(f"❌ Errore nell'avvio del bot: {e}")
-
 if __name__ == '__main__':
     # VERIFICA CONFIGURAZIONE FINALE
     if not TELEGRAM_TOKEN:
         print("❌ ERRORE CRITICO: TELEGRAM_TOKEN non configurato!")
-        print("💡 Configura TELEGRAM_TOKEN nelle Environment Variables di Render")
+        print("💡 Configura TELEGRAM_TOKEN nelle Environment Variables di Replit")
         exit(1)
 
     if not GEMINI_API_KEYS:
@@ -875,16 +852,47 @@ if __name__ == '__main__':
         print("💡 Configura almeno GEMINI_API_KEY_1 nelle Environment Variables")
         exit(1)
 
-    # 🚀 SU RENDER: AVVIA IL BOT IN UN THREAD SEPARATO
-    from threading import Thread
-    bot_thread = Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    print("✅ Bot Telegram avviato in thread separato")
+    # 🚀 AVVIA IL SERVER WEB IN UN THREAD SEPARATO
+    web_thread = Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+    print(f"✅ Server web avviato sulla porta {os.environ.get('PORT', 10000)}")
 
-    # 🚀 SU RENDER: AVVIA IL SERVER WEB NEL THREAD PRINCIPALE
-    port = int(os.environ.get('PORT', 10000))
-    print(f"✅ Server web Flask avviato sulla porta {port}")
-    print("🌐 URL: https://" + os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'localhost') + f":{port}")
-    
-    # Questo tiene attivo il processo principale per Render
-    web_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("link", link))
+    app.add_handler(CommandHandler("credits", credits_command))
+    app.add_handler(CommandHandler("myid", myid))
+    app.add_handler(CommandHandler("buy", buy_command))
+    app.add_handler(CommandHandler("paypal", paypal_command))
+    app.add_handler(CommandHandler("btc", btc_command))
+    app.add_handler(CommandHandler("eth", eth_command))
+    app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CommandHandler("generate_image", generate_image))
+    app.add_handler(CommandHandler("english", set_english))
+    app.add_handler(CommandHandler("italian", set_italian))
+    app.add_handler(CommandHandler("uncensored", uncensored_mode))
+    app.add_handler(CommandHandler("creative", creative_mode))
+    app.add_handler(CommandHandler("technical", technical_mode))
+    app.add_handler(CommandHandler("addcredits", add_credits_admin))
+    app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("🤖 AI Uncensored Ultra with Multi-API System Started!")
+    print(f"🔑 Loaded {len(GEMINI_API_KEYS)} API Keys from Environment Variables")
+    print("🔐 Configuration: SECURE (keys in environment)")
+    print("💳 PayPal Payment System: ACTIVE")
+    print("₿ Bitcoin Payment System: ACTIVE")
+    print("Ξ Ethereum Payment System: ACTIVE")
+    print("🎛️ Generation Parameters: Temperature 0.9 (Optimized)")
+    print("📝 Max Output Tokens: 4096 (Long Responses Enabled)")
+    print("👽 Generating Response Indicator: ENABLED")
+    print("💫 20 FREE Credits for New Users!")
+    print("🚀 Multi-API Key Rotation: ACTIVE")
+    print("🔓 UNCENSORED PROMPT: ACTIVATED FOR ALL KEYS")
+    print("🌐 Keep-alive: ACTIVE - Bot will stay online 24/7")
+    print("🔄 Web Server: ACTIVE - No more 502/503 errors!")
+
+    app.run_polling()
